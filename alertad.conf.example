@@ -17,10 +17,10 @@ USERINFO_SUB_FIELD = 'sub'
 
 # Маппинг групп на роли
 GROUP_TO_ROLE_MAPPING = {
-    'ADMIN:SECURITY': 'admin',
-    'DEV': 'user',
-    'OPS': 'operator',
-    'VIEWERS': 'viewer'
+    'admin': ['ADMIN:SECURITY', 'DEV'],
+    'user': ['USER'],
+    'operator': ['OPS'],
+    'viewer': ['VIEWERS']
 }
 
 # Настройки CORS (если необходимо)
