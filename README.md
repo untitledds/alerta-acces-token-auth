@@ -1,1 +1,1 @@
-# alerta-acces-token-auth
+# alerta-oauth2-oidc
