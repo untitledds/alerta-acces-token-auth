@@ -86,9 +86,9 @@ def oidc_authentication():
     user.update_last_login()
 
     # Маппинг групп на роли
-    for group in user.groups:
-        if group in current_app.config['GROUP_TO_ROLE_MAPPING']:
-            user.roles.append(current_app.config['GROUP_TO_ROLE_MAPPING'][group])
+    for role, groups in current_app.config['GROUP_TO_ROLE_MAPPING'].items():
+        if any(group in user.groups for group in groups):
+            user.roles.append(role)
 
     scopes = Permission.lookup(login=user.login, roles=user.roles + user.groups)
     customers = get_customers(login=user.login, groups=user.groups + ([user.domain] if user.domain else []))
