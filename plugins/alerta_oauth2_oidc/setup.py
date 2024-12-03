@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="alerta-oauth2-oidc",
-    version="1.0.0",
+    version="0.1.0",
     description="Alerta plugin for OAuth2/OIDC authentication",
     long_description="",
     keywords="alerta, oauth2, oidc, auth, plugin",
