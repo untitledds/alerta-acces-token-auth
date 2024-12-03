@@ -28,6 +28,9 @@ class OAuth2OIDCAuthentication(PluginBase):
 
         user_info = response.json()
 
+        # Логирование полученных данных
+        LOG.debug(f'User info from OIDC: {user_info}')
+
         # Проверка iss
         if user_info.get('iss') != current_app.config['OIDC_PROVIDER_URL']:
             raise ApiError('Invalid issuer', 401)
@@ -35,15 +38,23 @@ class OAuth2OIDCAuthentication(PluginBase):
         return self._create_user_from_info(user_info)
 
     def _create_user_from_info(self, user_info):
-        return User(
-            id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
+        # Создаем пользователя с пустыми значениями для password и text
+        user = User(
             name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
             login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+            password='',  # Добавляем пустой пароль
             email=user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
             roles=[],
+            text='',  # Добавляем пустой текст
+            id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
             groups=user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []),
             email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
         )
+
+        # Создаем пользователя в базе данных
+        user.create()
+
+        return user
 
     def authorize(self, username):
         user = User.find_by_username(username=username)
