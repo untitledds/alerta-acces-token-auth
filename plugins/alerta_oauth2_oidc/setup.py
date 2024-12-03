@@ -31,7 +31,7 @@ setup(
     ],
     entry_points={
         'alerta.plugins': [
-            'oauth2_oidc = alerta_oauth2_oidc.plugin:OAuth2OIDCAuthentication'
+            'oauth2_oidc = alerta_oauth2_oidc:OAuth2OIDCAuthentication'
         ]
     },
     test_suite='tests'
