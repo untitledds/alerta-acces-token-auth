@@ -41,23 +41,45 @@ class OAuth2OIDCAuthentication(PluginBase):
 
     def _create_user_from_info(self, user_info):
         try:
-            # Создаем пользователя с пустыми значениями для password и text
-            user = User(
-                name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
-                login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
-                password='',  # Добавляем пустой пароль
-                email=user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
-                roles=[],
-                text='',  # Добавляем пустой текст
-                id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
-                email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
-            )
+            # Проверка, принадлежит ли пользователь к требуемой группе
+            required_group = current_app.config['REQUIRED_GROUP']
+            user_groups = user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], [])
+            if required_group not in user_groups:
+                # Если пользователь не принадлежит к требуемой группе, добавляем его как гостя
+                user = User(
+                    name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
+                    login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+                    password='',  # Добавляем пустой пароль
+                    email=user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+                    roles=['guest'],
+                    text='',  # Добавляем пустой текст
+                    id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
+                    email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
+                )
+            else:
+                # Создаем пользователя с пустыми значениями для password и text
+                user = User(
+                    name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
+                    login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+                    password='',  # Добавляем пустой пароль
+                    email=user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+                    roles=[],
+                    text='',  # Добавляем пустой текст
+                    id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
+                    email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
+                )
+
+                # Проверка на административные роли
+                if user.email and user.email in current_app.config['ADMIN_USERS']:
+                    user.roles.extend(current_app.config['ADMIN_ROLES'])
+                elif not user.roles:
+                    user.roles.append(current_app.config['DEFAULT_USER_ROLE'])
 
             # Создаем пользователя в базе данных
             user.create()
 
             # Добавляем пользователя в группы, если они существуют в Alerta
-            self._add_user_to_groups(user, user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []))
+            self._add_user_to_groups(user, user_groups)
 
             return user
         except Exception as e:
