@@ -38,23 +38,32 @@ class OAuth2OIDCAuthentication(PluginBase):
         return self._create_user_from_info(user_info)
 
     def _create_user_from_info(self, user_info):
-        # Создаем пользователя с пустыми значениями для password и text
-        user = User(
-            name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
-            login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
-            password='',  # Добавляем пустой пароль
-            email=user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
-            roles=[],
-            text='',  # Добавляем пустой текст
-            id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
-            groups=user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []),
-            email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
-        )
+        try:
+            # Создаем пользователя с пустыми значениями для password и text
+            user = User(
+                name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
+                login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+                password='',  # Добавляем пустой пароль
+                email=user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
+                roles=[],
+                text='',  # Добавляем пустой текст
+                id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
+                groups=user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []),
+                email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
+            )
 
-        # Создаем пользователя в базе данных
-        user.create()
+            # Маппинг групп на роли
+            for role, groups in current_app.config['GROUP_TO_ROLE_MAPPING'].items():
+                if any(group in user.groups for group in groups):
+                    user.roles.append(role)
 
-        return user
+            # Создаем пользователя в базе данных
+            user.create()
+
+            return user
+        except Exception as e:
+            LOG.error(f'Error creating user: {e}')
+            raise ApiError('Error creating user', 500)
 
     def authorize(self, username):
         user = User.find_by_username(username=username)
@@ -97,6 +106,10 @@ class OAuth2OIDCAuthentication(PluginBase):
         for role, groups in current_app.config['GROUP_TO_ROLE_MAPPING'].items():
             if any(group in user.groups for group in groups):
                 user.roles.append(role)
+
+        # Проверка на административные роли
+        if any(role in current_app.config['ADMIN_ROLES'] for role in user.roles):
+            user.roles.extend(current_app.config['ADMIN_ROLES'])
 
         scopes = Permission.lookup(login=user.login, roles=user.roles + user.groups)
         customers = get_customers(login=user.login, groups=user.groups + ([user.domain] if user.domain else []))
