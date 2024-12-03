@@ -29,6 +29,11 @@ class OAuth2OIDCAuthentication(PluginBase):
             raise ApiError('Failed to get user info', 500)
 
         user_info = response.json()
+
+        # Проверка iss
+        if user_info.get('iss') != current_app.config['OIDC_PROVIDER_URL']:
+            raise ApiError('Invalid issuer', 401)
+
         user = User(
             id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
             name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
