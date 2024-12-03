@@ -18,9 +18,7 @@ class OAuth2OIDCAuthentication(PluginBase):
         super().__init__()
 
     def get_user_from_token(self, access_token):
-        headers = {
-            'Authorization': f'Bearer {access_token}'
-        }
+        headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(current_app.config['OIDC_USERINFO_URL'], headers=headers)
             response.raise_for_status()
@@ -34,7 +32,10 @@ class OAuth2OIDCAuthentication(PluginBase):
         if user_info.get('iss') != current_app.config['OIDC_PROVIDER_URL']:
             raise ApiError('Invalid issuer', 401)
 
-        user = User(
+        return self._create_user_from_info(user_info)
+
+    def _create_user_from_info(self, user_info):
+        return User(
             id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
             name=user_info.get(current_app.config['USERINFO_NAME_FIELD']),
             login=user_info.get(current_app.config['USERINFO_LOGIN_FIELD']) or user_info.get(current_app.config['USERINFO_EMAIL_FIELD']),
@@ -43,7 +44,6 @@ class OAuth2OIDCAuthentication(PluginBase):
             groups=user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []),
             email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
         )
-        return user
 
     def authorize(self, username):
         user = User.find_by_username(username=username)
@@ -52,9 +52,6 @@ class OAuth2OIDCAuthentication(PluginBase):
 
         if user.status != 'active':
             raise ApiError(f'User {username} is not active', 403)
-
-        if not_authorized('ALLOWED_OIDC_GROUPS', user.groups) or not_authorized('ALLOWED_EMAIL_DOMAINS', groups=[user.domain]):
-            raise ApiError(f'User {username} is not authorized', 403)
 
         return True
 
@@ -86,14 +83,7 @@ def oidc_authentication():
     if user.status != 'active':
         raise ApiError(f'User {user.login} is not active', 403)
 
-    if not_authorized('ALLOWED_OIDC_GROUPS', user.groups) or not_authorized('ALLOWED_EMAIL_DOMAINS', groups=[user.domain]):
-        raise ApiError(f'User {user.login} is not authorized', 403)
-
     user.update_last_login()
-
-    # Проверка на принадлежность к группе администраторов
-    if current_app.config['ADMIN_GROUP'] in user.groups:
-        user.roles.append('admin')
 
     # Маппинг групп на роли
     for group in user.groups:
