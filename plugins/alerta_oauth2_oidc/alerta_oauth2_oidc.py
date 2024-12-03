@@ -1,6 +1,6 @@
 import logging
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import current_app, jsonify, request
 from flask_cors import cross_origin
 from alerta.auth.utils import create_token, get_customers, not_authorized
@@ -67,7 +67,7 @@ class OAuth2OIDCAuthentication(PluginBase):
     def take_action(self, alert, action, text, **kwargs):
         return alert, action, text
 
-    def authenticate(self, **kwargs):
+    def authenticate(self, access_token):
         if 'access_token' not in request.json:
             raise ApiError('Missing access token', 400)
 
@@ -97,6 +97,5 @@ class OAuth2OIDCAuthentication(PluginBase):
         token = create_token(user_id=user.id, name=user.name, login=user.login, provider='oidc',
                              customers=customers, scopes=scopes, roles=user.roles, groups=user.groups,
                              email=user.email, email_verified=user.email_verified,
-                             expires=datetime.utcnow() + timedelta(seconds=current_app.config['TOKEN_LIFETIME']))
+                             expires=datetime.now(timezone.utc) + timedelta(seconds=current_app.config['TOKEN_LIFETIME']))
         return jsonify(token=token.tokenize())
-    
