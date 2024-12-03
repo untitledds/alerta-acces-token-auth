@@ -1,3 +1,4 @@
+# plugins\alerta_oauth2_oidc\alerta_oauth2_oidc.py
 import logging
 import requests
 from datetime import datetime, timedelta, timezone
@@ -7,6 +8,7 @@ from alerta.auth.utils import create_token, get_customers, not_authorized
 from alerta.exceptions import ApiError
 from alerta.models.permission import Permission
 from alerta.models.user import User
+from alerta.models.group import Group
 from alerta.plugins import PluginBase
 from alerta.utils.audit import auth_audit_trail
 
@@ -48,22 +50,25 @@ class OAuth2OIDCAuthentication(PluginBase):
                 roles=[],
                 text='',  # Добавляем пустой текст
                 id=user_info.get(current_app.config['USERINFO_SUB_FIELD']),
-                groups=user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []),
                 email_verified=user_info.get(current_app.config['USERINFO_EMAIL_VERIFIED_FIELD'], bool(user_info.get(current_app.config['USERINFO_EMAIL_FIELD'])))
             )
 
-            # Маппинг групп на роли
-            for role, groups in current_app.config['GROUP_TO_ROLE_MAPPING'].items():
-                if any(group in user.groups for group in groups):
-                    user.roles.append(role)
-
             # Создаем пользователя в базе данных
             user.create()
+
+            # Добавляем пользователя в группы, если они существуют в Alerta
+            self._add_user_to_groups(user, user_info.get(current_app.config['OIDC_GROUPS_CLAIM'], []))
 
             return user
         except Exception as e:
             LOG.error(f'Error creating user: {e}')
             raise ApiError('Error creating user', 500)
+
+    def _add_user_to_groups(self, user, groups):
+        for group_name in groups:
+            group = Group.find_by_name(group_name)
+            if group:
+                group.add_user(user.id)
 
     def authorize(self, username):
         user = User.find_by_username(username=username)
@@ -102,24 +107,19 @@ class OAuth2OIDCAuthentication(PluginBase):
 
         user.update_last_login()
 
-        # Маппинг групп на роли
-        for role, groups in current_app.config['GROUP_TO_ROLE_MAPPING'].items():
-            if any(group in user.groups for group in groups):
-                user.roles.append(role)
+        # Получаем группы пользователя
+        user_groups = user.get_groups()
+        groups = [group.name for group in user_groups]
 
-        # Проверка на административные роли
-        if any(role in current_app.config['ADMIN_ROLES'] for role in user.roles):
-            user.roles.extend(current_app.config['ADMIN_ROLES'])
-
-        scopes = Permission.lookup(login=user.login, roles=user.roles + user.groups)
-        customers = get_customers(login=user.login, groups=user.groups + ([user.domain] if user.domain else []))
+        scopes = Permission.lookup(login=user.login, roles=user.roles)
+        customers = get_customers(login=user.login, groups=groups + ([user.domain] if user.domain else []))
 
         auth_audit_trail.send(current_app._get_current_object(), event='oidc-login', message='user login via OAuth2/OIDC',
-                              user=user.login, customers=customers, scopes=scopes, roles=user.roles, groups=user.groups,
+                              user=user.login, customers=customers, scopes=scopes, roles=user.roles, groups=groups,
                               resource_id=user.id, type='user', request=request)
 
         token = create_token(user_id=user.id, name=user.name, login=user.login, provider='oidc',
-                             customers=customers, scopes=scopes, roles=user.roles, groups=user.groups,
+                             customers=customers, scopes=scopes, roles=user.roles, groups=groups,
                              email=user.email, email_verified=user.email_verified,
                              expires=datetime.now(timezone.utc) + timedelta(seconds=current_app.config['TOKEN_LIFETIME']))
         return jsonify(token=token.tokenize())
